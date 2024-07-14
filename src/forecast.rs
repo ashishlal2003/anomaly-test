@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize};
 
 #[derive(Debug, Deserialize)]
 pub struct ForecastResult {
@@ -58,7 +58,7 @@ def forecast(data, periods):
 
     # conversion to unix epoch timestamp
     # https://stackoverflow.com/a/54313505/21082374
-    forecast['ds'] = pd.to_datetime(forecast['ds'],utc=True).astype(int) / 10**9
+    forecast['ds'] = (pd.to_datetime(forecast['ds'],utc=True).astype('int64') / 10**9).astype('float64')
     return forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_dict('records')
         "#;
 
