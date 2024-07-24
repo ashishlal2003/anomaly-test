@@ -1,46 +1,45 @@
-mod forecast;
+mod data;
+mod prophet_model;
+mod anomaly_detection;
 
-use forecast::forecast;
+use data::load_and_preprocess_data;
+use prophet_model::{fit_prophet_model, forecast_prophet_model};
+use anomaly_detection::{calculated_residuals, calculate_z_scores, detect_anomalies};
 use pyo3::prelude::*;
-use std::error::Error;
-use chrono::NaiveDateTime;
-use std::any::type_name;
-
-fn read_csv(file_path: &str) -> Result<Vec<(String, f64)>, Box<dyn Error>> {
-    let mut rdr = csv::Reader::from_path(file_path)?;
-    let mut data = Vec::new();
-
-    for result in rdr.records() {
-        let record = result?;
-        let date_str = &record[0];
-        let value: f64 = record[8].parse()?;
-
-        let date = NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S%.fZ")?.date().to_string();
-
-        if !date.is_empty() && !value.is_nan() {
-            data.push((date, value));
-        }
-        else{
-            eprintln!("Invalid data: Date: {}, Value: {}", date, value);
-        }
-        
-    }
-
-    Ok(data)
-}
+use pyo3::types::{PyList};
 
 fn main() -> PyResult<()> {
-    let file_path = "C:\\Users\\ashis\\Downloads\\frontend-logs.csv";
+    Python::with_gil(|py| {
+        let file_path = "assets\\frontend-logs.csv";
 
-    match read_csv(file_path) {
-        Ok(data) => {
-            match forecast(data, 10) {
-                Ok(result) => println!("{:?}", result),
-                Err(e) => eprintln!("Error: {:?}", e),
-            }
-        }
-        Err(e) => eprintln!("Error reading CSV file: {:?}", e),
-    }
+        let df = load_and_preprocess_data(py, file_path, 404, "2s")?;
 
-    Ok(())
+        let model = fit_prophet_model(py, df.clone_ref(py))?;
+
+        let forecast = forecast_prophet_model(py, model, 30)?;
+
+        let df_with_residuals = calculated_residuals(py, df, forecast)?;
+
+        let residuals = df_with_residuals.call_method1(py, "get", ("residual",))?;
+        let ds_col = df_with_residuals.call_method1(py, "get", ("ds",))?;
+
+        let residuals_list: Vec<f64> = residuals.call_method0(py, "tolist")?.extract(py)?;
+        let residuals_py = PyList::new_bound(py, &residuals_list).into();
+
+        let ds_list: Vec<String> = ds_col.call_method0(py, "tolist")?.extract(py)?;
+
+        let z_scores = calculate_z_scores(py, residuals_py)?;
+
+        let anomalies = detect_anomalies(py, z_scores, 3.0)?;
+
+        let anomalies_list: Vec<usize> = anomalies.extract(py)?;
+        let anomaly_dates: Vec<String> = anomalies_list
+            .iter()
+            .filter_map(|&index| ds_list.get(index).cloned())
+            .collect();
+
+        println!("Anomalies detected at: {:?}", anomaly_dates);
+
+        Ok(())
+    })
 }

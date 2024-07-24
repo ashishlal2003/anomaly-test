@@ -6,7 +6,7 @@ def main():
 
     ## PUT IN YOUR FILEPATH OF FRONTEND LOGS HERE!
     ##CAN LATER CHANGE IT TO RELATIVE PATH WITHIN CODEBASE FOR DEVELOPMENT
-    filepath = "C:/Users/ashis/Downloads/frontend-logs.csv"
+    filepath = "frontend-logs.csv"
     df = load_and_preprocess_data(filepath, status_code=404)
 
     model = fit_prophet_model(df)
